@@ -167,7 +167,7 @@ def upload_all_tamil_songs():
             writer.writeheader()
 
     limit = 10
-    for year in range(1990, 2026):
+    for year in range(2025, 1989, -1):
         for month in range(1, 13):
             page = 0
             while True:
