@@ -154,7 +154,7 @@ def get_playlist_by_id(playlist_id):
 
 # Function to search and upload all Tamil songs, saving metadata to CSV
 def upload_all_tamil_songs():
-    print("Searching and uploading all Tamil songs...")
+    print("Searching and uploading all Tamil songs by year and month...")
     fieldnames = [
         'song_id', 'song_name', 'quality', 'audio_file_id', 'audio_file_unique_id',
         'image_file_id', 'image_file_unique_id', 'album', 'artist', 'release_date', 'duration', 'download_url', 'image_url'
@@ -166,89 +166,91 @@ def upload_all_tamil_songs():
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
             writer.writeheader()
 
-    # Search for Tamil songs (using a generic query 'tamil')
-    page = 0
     limit = 10
-    while True:
-        songs = search_songs('tamil', page=page, limit=limit)
-        if not (songs and songs.get('data') and songs['data'].get('results')):
-            print("No more Tamil songs found or error in API.")
-            break
-        results = songs['data']['results']
-        if not results:
-            break
-        for song in results:
-            song_id = song.get('id')
-            song_name = song.get('title') or song.get('name') or ''
-            if not song_id or not song_name:
-                continue
-            if is_song_uploaded(song_id):
-                print(f"Song '{song_name}' already uploaded. Skipping.")
-                continue
-            details = get_song_by_id(song_id)
-            if not (details and details.get('data') and len(details['data']) > 0):
-                print(f"Could not fetch details for song '{song_name}'. Skipping.")
-                continue
-            data = details['data'][0]
-            download_url = data.get('downloadUrl')
-            # Get image url (prefer 500x500)
-            img_field = data.get('image') or data.get('imageUrl')
-            image_url = None
-            if isinstance(img_field, list):
-                best_img = None
-                for img in img_field:
-                    if isinstance(img, dict) and img.get('quality') == '500x500':
-                        best_img = img.get('url')
-                        break
-                if not best_img and img_field:
-                    best_img = img_field[-1].get('url') if isinstance(img_field[-1], dict) else None
-                image_url = best_img
-            elif isinstance(img_field, str):
-                image_url = img_field
+    for year in range(1990, 2026):
+        for month in range(1, 13):
+            page = 0
+            while True:
+                # Try to search with year and month in the query
+                query = f"tamil {year}-{month:02d}"
+                songs = search_songs(query, page=page, limit=limit)
+                if not (songs and songs.get('data') and songs['data'].get('results')):
+                    break
+                results = songs['data']['results']
+                if not results:
+                    break
+                for song in results:
+                    song_id = song.get('id')
+                    song_name = song.get('title') or song.get('name') or ''
+                    if not song_id or not song_name:
+                        continue
+                    if is_song_uploaded(song_id):
+                        print(f"Song '{song_name}' already uploaded. Skipping.")
+                        continue
+                    details = get_song_by_id(song_id)
+                    if not (details and details.get('data') and len(details['data']) > 0):
+                        print(f"Could not fetch details for song '{song_name}'. Skipping.")
+                        continue
+                    data = details['data'][0]
+                    download_url = data.get('downloadUrl')
+                    # Get image url (prefer 500x500)
+                    img_field = data.get('image') or data.get('imageUrl')
+                    image_url = None
+                    if isinstance(img_field, list):
+                        best_img = None
+                        for img in img_field:
+                            if isinstance(img, dict) and img.get('quality') == '500x500':
+                                best_img = img.get('url')
+                                break
+                        if not best_img and img_field:
+                            best_img = img_field[-1].get('url') if isinstance(img_field[-1], dict) else None
+                        image_url = best_img
+                    elif isinstance(img_field, str):
+                        image_url = img_field
 
-            for quality in ['160kbps', '320kbps']:
-                quality_url = None
-                if isinstance(download_url, dict):
-                    quality_url = download_url.get(quality)
-                elif isinstance(download_url, list):
-                    for item in download_url:
-                        if isinstance(item, dict) and (item.get('quality') == quality):
-                            quality_url = item.get('url')
-                            break
-                elif isinstance(download_url, str):
-                    quality_url = None
-                if not quality_url:
-                    print(f"No {quality} download URL found for the song '{song_name}'. Skipping {quality}.")
-                    continue
-                # Send to Telegram
-                audio_file_id = audio_file_unique_id = image_file_id = image_file_unique_id = None
-                audio_file_id, audio_file_unique_id, image_file_id, image_file_unique_id = send_song_to_telegram(
-                    quality_url, song_name, quality_label=quality, image_url=image_url if quality == '160kbps' else None
-                )
-                if audio_file_id:
-                    row_data = {
-                        'song_id': song_id,
-                        'song_name': song_name,
-                        'quality': quality,
-                        'audio_file_id': audio_file_id,
-                        'audio_file_unique_id': audio_file_unique_id,
-                        'image_file_id': image_file_id if quality == '160kbps' else '',
-                        'image_file_unique_id': image_file_unique_id if quality == '160kbps' else '',
-                        'album': data.get('album', ''),
-                        'artist': data.get('primaryArtists', ''),
-                        'release_date': data.get('releaseDate', ''),
-                        'duration': int(data.get('duration')) if data.get('duration') else '',
-                        'download_url': quality_url,
-                        'image_url': image_url if quality == '160kbps' else ''
-                    }
-                    with open(csv_file, 'a', newline='', encoding='utf-8') as csvfile:
-                        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-                        writer.writerow(row_data)
-                    print(f"Uploaded and saved metadata for '{song_name}' ({quality})!")
-                else:
-                    print(f"Failed to upload '{song_name}' ({quality}) to Telegram.")
-        page += 1
-    print("All Tamil songs processed.")
+                    for quality in ['160kbps', '320kbps']:
+                        quality_url = None
+                        if isinstance(download_url, dict):
+                            quality_url = download_url.get(quality)
+                        elif isinstance(download_url, list):
+                            for item in download_url:
+                                if isinstance(item, dict) and (item.get('quality') == quality):
+                                    quality_url = item.get('url')
+                                    break
+                        elif isinstance(download_url, str):
+                            quality_url = None
+                        if not quality_url:
+                            print(f"No {quality} download URL found for the song '{song_name}'. Skipping {quality}.")
+                            continue
+                        # Send to Telegram
+                        audio_file_id = audio_file_unique_id = image_file_id = image_file_unique_id = None
+                        audio_file_id, audio_file_unique_id, image_file_id, image_file_unique_id = send_song_to_telegram(
+                            quality_url, song_name, quality_label=quality, image_url=image_url if quality == '160kbps' else None
+                        )
+                        if audio_file_id:
+                            row_data = {
+                                'song_id': song_id,
+                                'song_name': song_name,
+                                'quality': quality,
+                                'audio_file_id': audio_file_id,
+                                'audio_file_unique_id': audio_file_unique_id,
+                                'image_file_id': image_file_id if quality == '160kbps' else '',
+                                'image_file_unique_id': image_file_unique_id if quality == '160kbps' else '',
+                                'album': data.get('album', ''),
+                                'artist': data.get('primaryArtists', ''),
+                                'release_date': data.get('releaseDate', ''),
+                                'duration': int(data.get('duration')) if data.get('duration') else '',
+                                'download_url': quality_url,
+                                'image_url': image_url if quality == '160kbps' else ''
+                            }
+                            with open(csv_file, 'a', newline='', encoding='utf-8') as csvfile:
+                                writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+                                writer.writerow(row_data)
+                            print(f"Uploaded and saved metadata for '{song_name}' ({quality})!")
+                        else:
+                            print(f"Failed to upload '{song_name}' ({quality}) to Telegram.")
+                page += 1
+    print("All Tamil songs processed by year and month.")
 
 if __name__ == "__main__":
     print("JioSaavn API Python Example")
